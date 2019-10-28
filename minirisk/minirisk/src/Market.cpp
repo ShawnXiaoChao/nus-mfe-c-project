@@ -1,5 +1,8 @@
 #include "Market.h"
 #include "CurveDiscount.h"
+#include "CurveFXForward.h"
+#include "CurveFXSpot.h"
+#include "ICurve.h"
 
 #include <vector>
 
@@ -19,6 +22,16 @@ std::shared_ptr<const I> Market::get_curve(const string& name)
 const ptr_disc_curve_t Market::get_discount_curve(const string& name)
 {
     return get_curve<ICurveDiscount, CurveDiscount>(name);
+}
+
+const ptr_spot_curve_t Market::get_spot_curve(const string& name)
+{
+    return get_curve<ICurveFXSpot, CurveFXSpot>(name);
+}
+
+const ptr_fwd_curve_t Market::get_fwd_curve(const string&name)
+{
+    return get_curve<ICurveFXForward, CurveFXForward>(name);
 }
 
 double Market::from_mds(const string& objtype, const string& name)
