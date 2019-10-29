@@ -2,11 +2,12 @@
 #include <algorithm>
 
 #include "MarketDataServer.h"
+#include "FixingDataServer.h"
 #include "PortfolioUtils.h"
 
 using namespace::minirisk;
 
-void run(const string& portfolio_file, const string& risk_factors_file)
+void run(const string& portfolio_file, const string& risk_factors_file, const string& fixing_file)
 {
     // load the portfolio from file
     portfolio_t portfolio = load_portfolio(portfolio_file);
@@ -23,6 +24,9 @@ void run(const string& portfolio_file, const string& risk_factors_file)
 
     // initialize market data server
     std::shared_ptr<const MarketDataServer> mds(new MarketDataServer(risk_factors_file));
+    
+    // initialize fixing data server
+    std::shared_ptr<const FixingDataServer> fds(new FixingDataServer(fixing_file));
 
     // Init market object
     Date today(2017,8,5);
@@ -68,7 +72,7 @@ void usage()
 int main(int argc, const char **argv)
 {
     // parse command line arguments
-    string portfolio, riskfactors;
+    string portfolio, riskfactors, fixings;
     if (argc % 2 == 0)
         usage();
     for (int i = 1; i < argc; i += 2) {
@@ -78,14 +82,16 @@ int main(int argc, const char **argv)
             portfolio = value;
         else if (key == "-f")
             riskfactors = value;
+        else if (key == "-x")
+            fixings = value;
         else
             usage();
     }
-    if (portfolio == "" || riskfactors == "")
+    if (portfolio == "" || riskfactors == "" || fixings == "")
         usage();
 
     try {
-        run(portfolio, riskfactors);
+        run(portfolio, riskfactors, fixings);
         return 0;  // report success to the caller
     }
     catch (const std::exception& e)
