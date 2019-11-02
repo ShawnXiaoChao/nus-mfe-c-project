@@ -8,6 +8,7 @@ namespace minirisk {
   
   : m_today(today)
   , m_name(curve_name) 
+  , m_rate(mkt->get_fx_spot(curve_name)) 
   {}
  
 } // namespace minirisk
