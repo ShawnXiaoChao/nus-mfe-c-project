@@ -35,7 +35,7 @@ public:
     const ptr_disc_curve_t get_discount_curve(const string& name);
     const ptr_spot_curve_t get_spot_curve(const string& name);
     const ptr_fwd_curve_t get_fwd_curve(const string& name);
-    const ptr_fx_spot_curve_t get_fx_spot_curve(const string& name);
+    const ptr_spot_curve_t get_spot_curve(const string& name);
 
     // yield rate for currency name
     const double get_yield(const string& name);
