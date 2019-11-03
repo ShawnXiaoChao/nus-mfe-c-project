@@ -7,7 +7,7 @@
 
 using namespace::minirisk;
 
-void run(const string& portfolio_file, const string& risk_factors_file, const string& fixing_file)
+void run(const string& portfolio_file, const string& risk_factors_file, const string& fixing_file, const string& basecurrency)
 {
     // load the portfolio from file
     portfolio_t portfolio = load_portfolio(portfolio_file);
@@ -20,7 +20,7 @@ void run(const string& portfolio_file, const string& risk_factors_file, const st
     print_portfolio(portfolio);
 
     // get pricers
-    std::vector<ppricer_t> pricers(get_pricers(portfolio));
+    std::vector<ppricer_t> pricers(get_pricers(portfolio, basecurrency));
 
     // initialize market data server
     std::shared_ptr<const MarketDataServer> mds(new MarketDataServer(risk_factors_file));
@@ -72,7 +72,7 @@ void usage()
 int main(int argc, const char **argv)
 {
     // parse command line arguments
-    string portfolio, riskfactors, fixings;
+    string portfolio, riskfactors, fixings, basecurrency;
     if (argc % 2 == 0)
         usage();
     for (int i = 1; i < argc; i += 2) {
@@ -84,14 +84,18 @@ int main(int argc, const char **argv)
             riskfactors = value;
         else if (key == "-x")
             fixings = value;
+         else if (key == "-b")
+            basecurrency = value;
         else
             usage();
     }
     if (portfolio == "" || riskfactors == "" || fixings == "")
         usage();
-
+    // If not explicitly passed,this argument takes the value USD.
+    if (basecurrency == "")
+        basecurrency = "USD";
     try {
-        run(portfolio, riskfactors, fixings);
+        run(portfolio, riskfactors, fixings, basecurrency);
         return 0;  // report success to the caller
     }
     catch (const std::exception& e)
