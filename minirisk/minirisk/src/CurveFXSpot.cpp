@@ -4,7 +4,7 @@
 
 namespace minirisk {
   
-  CurveFXSpot::CurveFXSpot(Market *mkt, const Date& today, const std::string& curve_name)
+  CurveFXSpot::CurveFXSpot(Market *mkt, const Date& today, const string& curve_name)
   
   : m_today(today)
   , m_name(curve_name) 
