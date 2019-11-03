@@ -84,7 +84,7 @@ int main(int argc, const char **argv)
             riskfactors = value;
         else if (key == "-x")
             fixings = value;
-         else if (key == "-b")
+         else if (key == "-b CCY")
             basecurrency = value;
         else
             usage();
