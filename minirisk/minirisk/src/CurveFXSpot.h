@@ -15,14 +15,14 @@ struct CurveFXSpot : ICurveFXSpot
 
     CurveFXSpot(Market *mkt, const Date& today, const string& curve_name);
 
-    double spot() const { return m_spot; }
+    double spot() const { return m_fxspot; }
 
    
 
 private:
     Date   m_today;
     string m_name;
-    double m_spot;
+    double m_fxspot;
 };
 
 
