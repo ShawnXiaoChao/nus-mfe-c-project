@@ -24,7 +24,7 @@ const ptr_disc_curve_t Market::get_discount_curve(const string& name)
     return get_curve<ICurveDiscount, CurveDiscount>(name);
 }
 
-const ptr_fx_spot_curve_t Market::get_fx_spot_curve(const string& name)
+const ptr_spot_curve_t Market::get_spot_curve(const string& name)
 {
     return get_curve<ICurveFXSpot, CurveFXSpot>(name);
 }
