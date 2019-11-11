@@ -17,84 +17,91 @@ private:
     static std::string padding_dates(unsigned);
 
     // number of days elapsed from beginning of the year
-    unsigned day_of_year() const;
+    unsigned day_of_year(unsigned month, unsigned day, bool lomo_is_leap) const;
+
+    unsigned get_initial_format_date() const;
 
     friend long operator-(const Date& d1, const Date& d2);
 
     static const std::array<unsigned, 12> days_in_month;  // num of days in month M in a normal year
     static const std::array<unsigned, 12> days_ytd;      // num of days since 1-jan to 1-M in a normal year
-	static const std::array<unsigned, 12> days_ytd_leap; //num of days since 1-jan to 1-M in a leap year
+    static const std::array<unsigned, 12> leap_days_ytd;
     static const std::array<unsigned, n_years> days_epoch;   // num of days since 1-jan-1900 to 1-jan-yyyy (until 2200)
 
 public:
     // Default constructor
-	Date() : m_serial(0) {}
-	Date(unsigned serial) :m_serial(serial) {}
-	Date(const std::string& yyyymmdd);
+    // Date() : m_y(1970), m_m(1), m_d(1), m_is_leap(false) {}
+    Date() : lomo_serial(0) {}
 
     // Constructor where the input value is checked.
     Date(unsigned year, unsigned month, unsigned day)
     {
-		check_valid(year, month, day);
-		m_serial = days_epoch[year - 1900] + 
-			((is_leap_year(year) ? (days_ytd[month - 1] + 1) : days_ytd[month - 1]) 
-				+ day - 1);
-		//transer year,month,day into serial
+        init(year, month, day);
     }
 
-    void init(unsigned serial)
+    Date(unsigned serial) : lomo_serial(serial) {}
+
+    void set_lomo_serial(unsigned serial)
     {
-		m_serial =(unsigned) serial;
+        lomo_serial = serial;
+    }
+
+    void init(unsigned year, unsigned month, unsigned day)
+    {
+        check_valid(year, month, day);
+
+        bool lomo_is_leap = is_leap_year(year);
+
+        lomo_serial = this->serial(year, month, day, lomo_is_leap);
     }
 
     static void check_valid(unsigned y, unsigned m, unsigned d);
 
     bool operator<(const Date& d) const
     {
-        return m_serial<d.serial();
+        return (lomo_serial < d.get_serial());
     }
 
     bool operator==(const Date& d) const
     {
-        return m_serial == d.serial();
+        return (lomo_serial == d.get_serial());
     }
 
     bool operator>(const Date& d) const
     {
-        return m_serial > d.serial();
+        return (lomo_serial > d.get_serial());
     }
 
-	Date operator+(const int days) const {
-		return Date(serial() + days);
-	}
-	Date operator-(const int days) const {
-		return Date(serial() - days);
-	}
-			
-	 // number of days since 1-Jan-1900
-    unsigned serial() const
+    unsigned get_serial() const
     {
-		return m_serial;
+        return lomo_serial;
+    }
+
+    // number of days since 1-Jan-1900
+    unsigned serial(unsigned year, unsigned month, unsigned day, bool lomo_is_leap) const
+    {
+        return days_epoch[year - 1900] + day_of_year(month, day, lomo_is_leap);
     }
 
     static bool is_leap_year(unsigned yr);
 
-	void to_year_month_day(unsigned* y, unsigned* m, unsigned* d) const;
-
     // In YYYYMMDD format
     std::string to_string(bool pretty = true) const
     {
-		unsigned m_d, m_m, m_y;
-		to_year_month_day(&m_y,&m_m,&m_d);
+        std::string my_date = std::to_string(get_initial_format_date());
 
+        std::string m_y = my_date.substr(0, 4);
+        std::string m_m = my_date.substr(4, 2);
+        std::string m_d = my_date.substr(6, 2);
+        unsigned m = static_cast<unsigned>(std::atoi(m_m.c_str()));
+        unsigned d = static_cast<unsigned>(std::atoi(m_d.c_str()));
         return pretty
-            ? std::to_string((int)m_d) + "-" + std::to_string((int)m_m) + "-" + std::to_string(m_y)
-            : std::to_string(m_y) + padding_dates((int)m_m) + padding_dates((int)m_d);
+            ? m_d + "-" + m_m + "-" + m_y
+            : m_y + padding_dates(m) + padding_dates(d);
     }
 
 private:
-  
-	unsigned m_serial;
+    unsigned lomo_serial;
 };
 
 long operator-(const Date& d1, const Date& d2);

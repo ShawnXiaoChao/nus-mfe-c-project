@@ -1,42 +1,55 @@
 #include "FixingDataServer.h"
-
-#include <fstream>
 #include "Macros.h"
-#include "Global.h"
+#include "Streamer.h"
+
+#include <limits>
 
 namespace minirisk {
 
-FixingDataServer::FixingDataServer(const std::string& filename) {
+FixingDataServer::FixingDataServer(const std::string& filename)
+{
     std::ifstream is(filename);
     MYASSERT(!is.fail(), "Could not open file " << filename);
-    std::string name;
-    std::string date;
-    double value;
-    while (is >> name >> date >> value) {
-        m_data.emplace(name, std::map<Date, double>());
-        auto ins = m_data[name].emplace(Date(date), value);
+    do {
+        string name;
+        string date;
+        double value;
+        unsigned y, m, d;
+        is >> name >> date >> value;
+        
+        y = std::stoul(date.substr(0, 4));
+        m = std::stoul(date.substr(4, 2));
+        d = std::stoul(date.substr(6, 2));
+        Date m_date(y, m, d);
+        
+        m_fixings.emplace(name, std::map<Date, double>());
+        auto ins = m_fixings[name].emplace(m_date, value);
         MYASSERT(ins.second, "Duplicated fixing: " << date << " " << value);
-  }
+    } while (is);
 }
 
-double FixingDataServer::get(const std::string& name, const Date& t) const {
-    auto iter = m_data.find(name);
-    MYASSERT(iter != m_data.end(), "Fixing not found: " << name << ","
-        << t.to_string());
-    auto date_iter = iter->second.find(t);
-    MYASSERT(date_iter != iter->second.end(), "Fixing not found: "
-        << name << "," << t.to_string());
-    return date_iter->second;
+double FixingDataServer::get(const string& name, const Date& t) const
+{
+    auto iter_name = m_fixings.find(name);
+    MYASSERT(iter_name != m_fixings.end(), "Fixing not found: " << name << "," << t);
+    auto iter_date = iter_name->second.find(t);
+    MYASSERT(iter_date != iter_name->second.end(), "Fixing not found: " << name << ", " << t);
+    return iter_date->second;
 }
 
-std::pair<double, bool> FixingDataServer::lookup(const std::string& name, const Date& t) const {
-    auto iter = m_data.find(name);
-    if (iter != m_data.end()) {
-        auto date_iter = iter->second.find(t);
-        if (date_iter != iter->second.end())
-            return std::make_pair(date_iter->second, true);
+std::pair<double, bool> FixingDataServer::lookup(const string& name, const Date& t) const
+{
+    auto iter_name = m_fixings.find(name);
+    if (iter_name == m_fixings.end())
+        return (std::make_pair(std::numeric_limits<double>::quiet_NaN(), false));
+    else
+    {
+        auto iter_date = iter_name->second.find(t);
+        return (iter_date != iter_name->second.end())
+            ? std::make_pair(iter_date->second, true)
+            : std::make_pair(std::numeric_limits<double>::quiet_NaN(), false);
     }
-    return std::make_pair(nan<double>(), false);
 }
-  
+
 } // namespace minirisk
+

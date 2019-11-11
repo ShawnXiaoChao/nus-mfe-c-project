@@ -1,31 +1,31 @@
 #pragma once
 #include "ICurve.h"
-#include <vector>
 #include <map>
-
+#include <vector>
 
 namespace minirisk {
 
-    struct Market;
+struct Market;
 
-    struct CurveDiscount : ICurveDiscount
-    {
-        virtual string name() const { return m_name; }
+struct CurveDiscount : ICurveDiscount
+{
+    static std::map<char, double> tenor_char_part_map;
 
-        CurveDiscount(Market *mkt, const Date& today, const string& curve_name);
+    virtual string name() const { return m_name; }
 
-        // compute the discount factor
-        double df(const Date& t) const;
+    CurveDiscount(Market *mkt, const Date& today, const string& curve_name);
 
-        virtual Date today() const { return m_today; }
+    // compute the discount factor
+    std::pair<double, unsigned> df(const Date& t) const;
 
-    private:
-        Date   m_today;
-        string m_name;
-		std::vector<Date> m_date;  //save the date points
-		std::vector<double> m_rate_t; //save the rate of correspoding date points
-	    //std::map <Date, double> m_rate; //save map to change m_rate   
-		double m_rate;
-    };
+    virtual Date today() const { return m_today; }
+
+private:
+    Date   m_today;
+    string m_name;
+    std::map<string, double> name_rate_map;
+    std::vector<std::pair<double, double>> tenor_rate_vec;
+    std::vector<double> rate_mul_tenor_vec;
+};
 
 } // namespace minirisk

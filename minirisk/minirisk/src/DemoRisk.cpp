@@ -7,7 +7,7 @@
 
 using namespace::minirisk;
 
-void run(const string& portfolio_file, const string& risk_factors_file, const string& fixing_file, const string& basecurrency)
+void run(const string& portfolio_file, const string& risk_factors_file, const string& baseccy, const string& fixing_file)
 {
     // load the portfolio from file
     portfolio_t portfolio = load_portfolio(portfolio_file);
@@ -20,21 +20,24 @@ void run(const string& portfolio_file, const string& risk_factors_file, const st
     print_portfolio(portfolio);
 
     // get pricers
-    std::vector<ppricer_t> pricers(get_pricers(portfolio, basecurrency));
+    std::vector<ppricer_t> pricers(get_pricers(portfolio, baseccy));
 
     // initialize market data server
     std::shared_ptr<const MarketDataServer> mds(new MarketDataServer(risk_factors_file));
-    
+
     // initialize fixing data server
-    std::shared_ptr<const FixingDataServer> fds(new FixingDataServer(fixing_file));
+    std::shared_ptr<const FixingDataServer> fds;
+    if (!fixing_file.empty())
+        fds.reset(new FixingDataServer(fixing_file));
 
     // Init market object
     Date today(2017,8,5);
-    Market mkt(mds, today);
+    Market mkt(mds, today, baseccy);
 
     // Price all products. Market objects are automatically constructed on demand,
     // fetching data as needed from the market data server.
     {
+
         auto prices = compute_prices(pricers, mkt);
         print_price_vector("PV", prices);
     }
@@ -72,7 +75,8 @@ void usage()
 int main(int argc, const char **argv)
 {
     // parse command line arguments
-    string portfolio, riskfactors, fixings, basecurrency;
+    string portfolio, riskfactors, fixings;
+    string baseccy = "USD";
     if (argc % 2 == 0)
         usage();
     for (int i = 1; i < argc; i += 2) {
@@ -82,20 +86,18 @@ int main(int argc, const char **argv)
             portfolio = value;
         else if (key == "-f")
             riskfactors = value;
+        else if (key == "-b")
+			baseccy = value;
         else if (key == "-x")
             fixings = value;
-         else if (key == "-b CCY")
-            basecurrency = value;
         else
             usage();
     }
-    if (portfolio == "" || riskfactors == "" || fixings == "")
+    if (portfolio == "" || riskfactors == "")
         usage();
-    // If not explicitly passed,this argument takes the value USD.
-    if (basecurrency == "")
-        basecurrency = "USD";
+
     try {
-        run(portfolio, riskfactors, fixings, basecurrency);
+        run(portfolio, riskfactors, baseccy, fixings);
         return 0;  // report success to the caller
     }
     catch (const std::exception& e)

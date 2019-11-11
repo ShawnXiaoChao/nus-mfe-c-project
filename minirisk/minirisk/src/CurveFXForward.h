@@ -1,28 +1,30 @@
 #pragma once
+
+#include <string>
+
 #include "ICurve.h"
 
 namespace minirisk {
 
 struct Market;
 
-struct CurveFXForward : ICurveFXForward
-{
-    virtual string name() const { return m_name; }
+struct CurveFXForward : ICurveFXForward {
+public:
+    virtual std::string name() const;
+
     virtual Date today() const { return m_today; }
 
-    CurveFXForward(Market *mkt, const Date& today, const string& curve_name);
+    CurveFXForward(Market *mkt, const Date& today, const std::string& name);
 
-    // get forward price
-    double fwd(const Date& t) const;
+    virtual double fwd(const Date& t) const;
 
 private:
-    Date   m_today;
-    string m_name;
-    ptr_spot_curve_t m_spot;
-    ptr_disc_curve_t m_df_ccy1;
-    ptr_disc_curve_t m_df_ccy2;
-};
-
+    Date m_today;
+    ptr_disc_curve_t ccy_dc;
+    ptr_disc_curve_t base_ccy_dc;
+    ptr_fx_spot_curve_t m_spot;
+    std::string m_ccy;
+    std::string m_base_ccy;
+}; // struct CurveFXForward
 
 } // namespace minirisk
-

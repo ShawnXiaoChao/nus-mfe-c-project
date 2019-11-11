@@ -2,211 +2,266 @@
 #include "PortfolioUtils.h"
 #include "TradePayment.h"
 
-
-
 #include <numeric>
-#include <math.h>
-
+#include <set>
 namespace minirisk {
 
-	void print_portfolio(const portfolio_t& portfolio)
-	{
-		std::for_each(portfolio.begin(), portfolio.end(), [](auto& pt) { pt->print(std::cout); });
-	}
+void print_portfolio(const portfolio_t& portfolio)
+{
+    std::for_each(portfolio.begin(), portfolio.end(), [](auto& pt){ pt->print(std::cout); });
+}
 
-	std::vector<ppricer_t> get_pricers(const portfolio_t& portfolio)
-	{
-		std::vector<ppricer_t> pricers(portfolio.size());
-		std::transform(portfolio.begin(), portfolio.end(), pricers.begin()
-			, [](auto& pt) -> ppricer_t { return pt->pricer(); });
-		return pricers;
-	}
+std::vector<ppricer_t> get_pricers(const portfolio_t& portfolio, const std::string& baseccy)
+{
+    std::vector<ppricer_t> pricers(portfolio.size());
+    std::transform( portfolio.begin(), portfolio.end(), pricers.begin()
+                  , [baseccy](auto &pt) -> ppricer_t { return pt->pricer(baseccy); } );
+    return pricers;
+}
 
-	//MY PART starts+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-	portfolio_values_t compute_prices(const std::vector<ppricer_t>& pricers, Market& mkt)
-	{
-		portfolio_values_t prices;
-		for (auto& pp : pricers)
-		{
-			try {
-				auto comp_prices = pp->price(mkt);
-				prices.push_back(std::make_pair(comp_prices, ""));
-			}
-			catch (std::exception& e) {
-				prices.push_back(std::make_pair(std::numeric_limits<double>::quiet_NaN(), +e.what()));
-			}
-		}
-		return prices;
-	}
+portfolio_values_t compute_prices(const std::vector<ppricer_t>& pricers, Market& mkt)
+{
+    portfolio_values_t prices(pricers.size());
+    std::transform(pricers.begin(), pricers.end(), prices.begin()
+        ,[&mkt](auto &pp) -> std::pair<double,string> { return pp->price(mkt);});
+    return prices;
+}
 
-	compute_total_t portfolio_total(const portfolio_values_t& values)
-	{
-		compute_total_t trades_total;
-		for (int i = 0; i < values.size(); ++i)
-		{
-			if (isnan(values[i].first))
-				trades_total.second.push_back(std::make_pair(i, values[i].second));
-			else
-				trades_total.first += values[i].first;
-		}
-		return trades_total;
-	}
+std::pair<double, std::vector<std::pair<size_t,string>>> portfolio_total(const portfolio_values_t& values)
+{
+    std::vector<double> valid_vec;
+    std::vector<std::pair<size_t,string>> invalid_vec;
+    for(auto iter = values.cbegin(); iter != values.cend(); iter++)
+    {
+        if((iter->second == ""))
+        {
+            valid_vec.push_back(iter->first);
+        } else {
+            invalid_vec.push_back(std::make_pair(size_t(iter-values.cbegin()), iter->second));
+        }
+    }
+    return std::make_pair(std::accumulate(valid_vec.begin(), valid_vec.end(), 0.0), invalid_vec);
+}
 
-	std::vector<std::pair<string, portfolio_values_t>> PV01Bucketed(const std::vector<ppricer_t>& pricers, const Market& mkt)
-	{
-		std::vector<std::pair<string, portfolio_values_t>> pv01;  // PV01 per trade
+std::vector<std::pair<string, portfolio_values_t>> compute_parallel_pv01(const std::vector<ppricer_t>& pricers, const Market& mkt)
+{
+    std::vector<std::pair<string, portfolio_values_t>> pv01;  // PV01 per trade
+    std::set<string> my_set;
 
-		const double bump_size = 0.01 / 100;
+    const double bump_size = 0.01 / 100;
+    // bucketed 
+    // filter risk factors related to IR
+    auto base = mkt.get_risk_factors(ir_rate_prefix + "(([1-9][0-9]*[DWY])|((1[0-2]|[1-9])[M])).*");
 
-		// Filter risk factors related to IR.*.
-		auto base = mkt.get_risk_factors(ir_rate_prefix + "\.[0-9]*[A-Z]\." + "[A-Z]{3}");
+    // compute prices for perturbated markets and aggregate results
+    pv01.reserve(base.size());
 
-		// We Make a local copy of Market object, since we will modify it applying bumps.
-		// Note that the actual market objects are referred to via pointers and are shared.
-		Market tmpmkt(mkt);
+    for (const auto& d : base) {
+        string temp = d.first;
+        my_set.insert(temp.substr(temp.size()-3, temp.size()));
+    }
+    for(auto iter=my_set.begin(); iter!=my_set.end();iter++)
+    {
+        portfolio_values_t pv_up, pv_dn;
+        double dr = 2.0 * bump_size;
 
-		// Compute prices for perturbated markets and aggregate results.
-		pv01.reserve(base.size());
-		for (const auto& d : base) {
-			//The code below changes the type of pv_up and pv_dn
-			portfolio_values_t pv_up, pv_dn; 
-			std::vector<std::pair<string, double>> bumped(1, d);
-			pv01.push_back(std::make_pair(d.first, portfolio_values_t()));
+        // Make a local copy of the Market object, because we will modify it applying bumps
+        // Note that the actual market objects are shared, as they are referred to via pointers
+        Market tmpmkt_up(mkt);
+        Market tmpmkt_down(mkt);
 
-			// Bump up and price.
-			bumped[0].second = d.second + bump_size;
-			tmpmkt.set_risk_factors(bumped);
-			pv_up = compute_prices(pricers, tmpmkt);
+        base = mkt.get_risk_factors(ir_rate_prefix + "(([1-9][0-9]*[DWY])|((1[0-2]|[1-9])[M]))."+(*iter));
+        
+        pv01.push_back(std::make_pair("parallel " + ir_rate_prefix+(*iter), portfolio_values_t(pricers.size())));
 
-			// Bump down and price.
-			bumped[0].second = d.second - bump_size;
-			tmpmkt.set_risk_factors(bumped);
-			pv_dn = compute_prices(pricers, tmpmkt);
+        for (const auto& d : base) {
+            std::vector<std::pair<string, double>> bumped(1, d);
+            // std::cout << d.first << std::endl;
+            bumped[0].second = d.second - bump_size;
+            tmpmkt_down.set_risk_factors(bumped);
+            
+            bumped[0].second = d.second + bump_size; // bump up
+            tmpmkt_up.set_risk_factors(bumped);
+        }
 
-			// Restore original market state for next iteration. And note that it is 
-			// more efficient than creating a new copy of the market at every iteration
-			bumped[0].second = d.second;
-			tmpmkt.set_risk_factors(bumped);
+        pv_dn = compute_prices(pricers, tmpmkt_down);
+        pv_up = compute_prices(pricers, tmpmkt_up);
 
-			// Compute estimator of the derivative by using central finite differences.
-			double dr = 2.0 * bump_size;
-			for (int i = 0; i < pv_up.size(); i++)
-			{
-				if (isnan(pv_up[i].first) || isnan(pv_dn[i].first))
-					pv01.back().second.push_back(std::make_pair(std::numeric_limits<double>::quiet_NaN(), isnan(pv_up[i].first) ? pv_up[i].second : pv_dn[i].second));
-				else
-					pv01.back().second.push_back(std::make_pair((pv_up[i].first - pv_dn[i].first) / dr, ""));
-			}
-		}
-		return pv01;
-	}
+        std::transform(pv_up.begin(), pv_up.end(), pv_dn.begin(), pv01.back().second.begin()
+            , [dr](std::pair<double, string> hi, std::pair<double, string> lo) -> std::pair<double, string> {
+                if(hi.second == "" && lo.second == "")
+                {
+                    return std::make_pair((hi.first - lo.first) / dr, "");
+                } else {
+                    return std::make_pair(std::numeric_limits<double>::quiet_NaN(), hi.second);
+                }
+                });
+        // std::transform(pv_up.begin(), pv_up.end(), pv_dn.begin(), pv01.back().second.begin()
+        //         , [dr](double hi, double lo) -> double { return (hi - lo) / dr; });
+    }
+    
+    return pv01;
+}
 
-	std::vector<std::pair<string, portfolio_values_t>> PV01Parallel(const std::vector<ppricer_t>& pricers, const Market& mkt)
-	{
-		// This is the PV01 per trade.
-		std::vector<std::pair<string, portfolio_values_t>> pv01;  
+std::vector<std::pair<string, portfolio_values_t>> compute_bucketed_pv01(const std::vector<ppricer_t>& pricers, const Market& mkt)
+{
+    std::vector<std::pair<string, portfolio_values_t>> pv01;  // PV01 per trade
 
-		const double bump_size = (0.01 / 100);
+    const double bump_size = 0.01 / 100;
+    // bucketed 
+    // filter risk factors related to IR
+    auto base = mkt.get_risk_factors(ir_rate_prefix + "(([1-9][0-9]*[DWY])|((1[0-2]|[1-9])[M])).*");
 
-		// Filter risk factors related to IR.*.
-		auto base = mkt.get_risk_factors(ir_rate_prefix + "\.[0-9]*[A-Z]\." + "[A-Z]{3}");
+    // Make a local copy of the Market object, because we will modify it applying bumps
+    // Note that the actual market objects are shared, as they are referred to via pointers
+    Market tmpmkt(mkt);
 
+    // compute prices for perturbated markets and aggregate results
+    pv01.reserve(base.size());
 
-		//Here need to make two copy of Market object because all risk factors 
-		//move simutaneously for bumping and bumping down.
-		Market tmpmkt(mkt);
+    for (const auto& d : base) {
+        portfolio_values_t pv_up, pv_dn;
+        std::vector<std::pair<string, double>> bumped(1, d);
+        pv01.push_back(std::make_pair("bucketed " + d.first, portfolio_values_t(pricers.size())));
 
-		pv01.reserve(base.size());
-		for (const auto& d : base) {
-			portfolio_values_t pv_up, pv_dn;
-			std::vector<std::pair<string, double>> bumped(1, d);
-			pv01.push_back(std::make_pair(d.first, portfolio_values_t()));
+        // bump down and price
+        bumped[0].second = d.second - bump_size;
+        tmpmkt.set_risk_factors(bumped);
+        pv_dn = compute_prices(pricers, tmpmkt);
 
-			// Bump up.
-			bumped[0].second = d.second + bump_size;
-			tmpmkt.set_risk_factors(bumped);
+        // bump up and price
+        bumped[0].second = d.second + bump_size; // bump up
+        tmpmkt.set_risk_factors(bumped);
+        pv_up = compute_prices(pricers, tmpmkt);
 
-			// Bump down.
-			bumped[0].second = d.second - bump_size;
-			tmpmkt.set_risk_factors(bumped);
+        // restore original market state for next iteration
+        // (more efficient than creating a new copy of the market at every iteration)
+        bumped[0].second = d.second;
+        tmpmkt.set_risk_factors(bumped);
 
-			//compute prices
-			pv_up = compute_prices(pricers, tmpmkt);
-			pv_dn = compute_prices(pricers, tmpmkt);
+        // compute estimator of the derivative via central finite differences
+        double dr = 2.0 * bump_size;
+        std::transform(pv_up.begin(), pv_up.end(), pv_dn.begin(), pv01.back().second.begin()
+            , [dr](std::pair<double, string> hi, std::pair<double, string> lo) -> std::pair<double, string> {
+                if(hi.second == "" && lo.second == "")
+                {
+                    return std::make_pair((hi.first - lo.first) / dr, "");
+                } else {
+                    return std::make_pair(std::numeric_limits<double>::quiet_NaN(), hi.second);
+                }
+                });
+    }
+    return pv01;
+}
 
-			// Compute estimator of the derivative via central finite differences.
-			double dr = 2.0 * bump_size;
-			for (int i = 0; i < pv_up.size(); i++)
-			{
-				if (isnan(pv_up[i].first) || isnan(pv_dn[i].first))
-					pv01.back().second.push_back(std::make_pair(std::numeric_limits<double>::quiet_NaN(), (isnan(pv_up[i].first) ? pv_up[i].second : pv_dn[i].second)));
-				else
-					pv01.back().second.push_back(std::make_pair((pv_up[i].first - pv_dn[i].first) / dr, ""));
-			}
-		}
-		return pv01;
-	}
-	//MY PART ends++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+std::vector<std::pair<string, portfolio_values_t>> compute_pv01(const std::vector<ppricer_t>& pricers, const Market& mkt)
+{
+    auto bucketed_pv01 = compute_bucketed_pv01(pricers, mkt);
+    auto parallel_pv01 = compute_parallel_pv01(pricers, mkt);
 
-	ptrade_t load_trade(my_ifstream& is)
-	{
-		string name;
-		ptrade_t p;
+    std::vector<std::pair<string, portfolio_values_t>> pv01_result(bucketed_pv01.size()+parallel_pv01.size());
+    std::merge(bucketed_pv01.begin(), bucketed_pv01.end(), parallel_pv01.begin(), parallel_pv01.end(), pv01_result.begin());
+    return pv01_result;
+}
 
-		// read trade identifier
-		guid_t id;
-		is >> id;
+// std::vector<std::pair<std::string, portfolio_values_t>> compute_fx_delta(
+//      const std::vector<ppricer_t>& pricers, const Market& mkt,
+//      std::shared_ptr<const FixingDataServer> fds) {
+//   std::vector<std::pair<std::string, portfolio_values_t>> fx_delta;
+//   auto fx_spots = mkt.get_risk_factors(fx_spot_prefix + "[A-Z]{3}");
+//   std::vector<std::string> risk_ccys;
+//   find_all_risk_ccy(fx_spots, &risk_ccys);
+//   Market tmpmkt(mkt);
 
-		if (id == TradePayment::m_id)
-			p.reset(new TradePayment);
-		else
-			THROW("Unknown trade type:" << id);
+//   for (const auto& risk_ccy : risk_ccys) {
+//     auto risk_factors = mkt.get_risk_factors(fx_spot_prefix + risk_ccy);
+//     MYASSERT(risk_factors.size() == 1, 
+//         "Duplicate fx spot rate." << fx_spot_prefix + risk_ccy);
+//     const double original_value = risk_factors[0].second;
+//     double bump_size = original_value * 0.1 / 100;
+//     double dr = 2 * bump_size;
+//     risk_factors[0].second = original_value + bump_size;
+//     tmpmkt.set_risk_factors(risk_factors);
+//     auto pv_up = compute_prices(pricers, tmpmkt, fds);
+//     risk_factors[0].second = original_value - bump_size;
+//     tmpmkt.set_risk_factors(risk_factors);
+//     auto pv_dn = compute_prices(pricers, tmpmkt, fds);
+//     risk_factors[0].second = original_value;
+//     tmpmkt.set_risk_factors(risk_factors);
 
-		p->load(is);
+//     fx_delta.push_back(
+//         std::make_pair(fx_spot_prefix + risk_ccy,
+//           std::vector<trade_value_t>(pricers.size())));
 
-		return p;
-	}
+//     std::transform(
+//         pv_up.begin(), pv_up.end(), pv_dn.begin(), 
+//         fx_delta.back().second.begin(), [dr](auto& hi, auto& lo) ->
+//         trade_value_t { return pv01_or_nan(hi, lo, dr); });
+//   }
+//   return fx_delta;
+// }
+ptrade_t load_trade(my_ifstream& is)
+{
+    string name;
+    ptrade_t p;
 
-	void save_portfolio(const string& filename, const std::vector<ptrade_t>& portfolio)
-	{
-		// test saving to file
-		my_ofstream of(filename);
-		for (const auto& pt : portfolio) {
-			pt->save(of);
-			of.endl();
-		}
-		of.close();
-	}
+    // read trade identifier
+    guid_t id;
+    is >> id;
 
-	std::vector<ptrade_t> load_portfolio(const string& filename)
-	{
-		std::vector<ptrade_t> portfolio;
+    if (id == TradePayment::m_id)
+        p.reset(new TradePayment);
+    else
+        THROW("Unknown trade type:" << id);
 
-		// test reloading the portfolio
-		my_ifstream is(filename);
-		while (is.read_line())
-			portfolio.push_back(load_trade(is));
+    p->load(is);
 
-		return portfolio;
-	}
+    return p;
+}
 
-	void print_price_vector(const string& name, const portfolio_values_t& values)
-	{
-		std::cout
-			<< "========================\n"
-			<< name << ":\n"
-			<< "========================\n"
-			<< "Total: " << portfolio_total(values).first << "\n"
-			<< "Errors: " << portfolio_total(values).second.size()
-			<< "\n========================\n";
+void save_portfolio(const string& filename, const std::vector<ptrade_t>& portfolio)
+{
+    // test saving to file
+    my_ofstream of(filename);
+    for( const auto& pt : portfolio) {
+        pt->save(of);
+        of.endl();
+    }
+    of.close();
+}
 
-		for (size_t i = 0, n = values.size(); i < n; ++i)
-			if (isnan(values[i].first))
-				std::cout << std::setw(5) << i << ": " << values[i].second << "\n";
-			else
-				std::cout << std::setw(5) << i << ": " << values[i].first << "\n";
+std::vector<ptrade_t> load_portfolio(const string& filename)
+{
+    std::vector<ptrade_t> portfolio;
 
-		std::cout << "========================\n\n";
-	}
+    // test reloading the portfolio
+    my_ifstream is(filename);
+    while (is.read_line())
+        portfolio.push_back(load_trade(is));
+
+    return portfolio;
+}
+
+void print_price_vector(const string& name, const portfolio_values_t& values)
+{
+    auto temp = portfolio_total(values);
+    std::cout
+        << "========================\n"
+        << name << ":\n"
+        << "========================\n"
+        << "Total: " << temp.first << std::endl
+        << "Errors: " << temp.second.size() << std::endl
+        << "\n========================\n";
+
+    for (size_t i = 0, n = values.size(); i < n; ++i)
+    if(values[i].second == "")
+    {
+        std::cout << std::setw(5) << i << ": " << values[i].first << "\n";
+    } else {
+        std::cout << std::setw(5) << i << ": " << values[i].second << "\n";
+    }
+
+    std::cout << "========================\n\n";
+}
 
 } // namespace minirisk

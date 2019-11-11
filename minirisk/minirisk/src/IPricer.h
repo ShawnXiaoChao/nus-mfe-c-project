@@ -4,12 +4,14 @@
 
 #include "IObject.h"
 #include "Market.h"
+#include "FixingDataServer.h"
 
 namespace minirisk {
 
 struct IPricer : IObject
 {
-    virtual double price(Market& m) const = 0;
+    virtual std::pair<double, string> price(Market& mkt) const { return price(mkt, nullptr); }
+    virtual std::pair<double, string> price(Market& mkt, FixingDataServer* fds) const = 0;
 };
 
 

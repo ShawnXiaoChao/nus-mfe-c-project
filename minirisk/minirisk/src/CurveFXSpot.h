@@ -1,30 +1,27 @@
-#pragma once
+#include <string>
 #include "ICurve.h"
 
 namespace minirisk {
 
 struct Market;
 
-struct CurveFXSpot : ICurveFXSpot
-{
+struct CurveFXSpot : ICurveFXSpot {
+public:
+    virtual std::string name() const { return m_name; }
 
-    
     virtual Date today() const { return m_today; }
 
-    virtual string name() const { return m_name; }
+    CurveFXSpot(Market *mkt, const Date& today, const std::string& name);
 
-    CurveFXSpot(Market *mkt, const Date& today, const string& curve_name);
+    double get_spot(const std::string& name) const {
+        return (fx_map.find(name)->second);
+        }
 
-    double spot() const { return m_fxspot; }
-
-   
 
 private:
-    Date   m_today;
-    string m_name;
-    double m_fxspot;
-};
-
+    Date m_today;
+    std::string m_name;
+    std::map<string, double> fx_map;
+}; // struct CurveFXSpot
 
 } // namespace minirisk
-

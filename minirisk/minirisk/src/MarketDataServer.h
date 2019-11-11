@@ -15,7 +15,7 @@ public:
     MarketDataServer(const string& filename);
 
     // queries
-    double get(const string& name) const;
+    std::map<string, double> get(const string& objtype, const string& name) const;
     std::pair<double, bool> lookup(const string& name) const;
     std::vector<std::string> match(const std::string& expr) const;
 
@@ -24,7 +24,7 @@ private:
     std::map<string, double> m_data;
 };
 
-string mds_spot_name(const string& name);
+string mds_spot_name(const string& name, const string& baseccy);
 
 } // namespace minirisk
 
